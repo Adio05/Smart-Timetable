@@ -17,7 +17,7 @@ export const PWAInstallButton: React.FC = () => {
       <button
         onClick={install}
         className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 transition active:scale-95"
-        title="Install Chronos app on your device for offline access"
+        title="Install Engra app on your device for offline access"
       >
         <Download className="w-3.5 h-3.5" />
         <span>Install App</span>
@@ -53,7 +53,7 @@ export const PWAInstallButton: React.FC = () => {
                 </button>
               </div>
               <p className="mt-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Add Chronos to your home screen for instant full-screen offline access and class alerts:
+                Add Engra to your home screen for instant full-screen offline access and class alerts:
               </p>
               <ol className="mt-3 space-y-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-100 dark:border-slate-800">
                 <li className="flex gap-2">

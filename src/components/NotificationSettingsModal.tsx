@@ -65,7 +65,7 @@ export const NotificationSettingsModal: React.FC<NotificationSettingsModalProps>
 
   const handleTestNotification = () => {
     sendPushNotification(
-      'Chronos Lecture Alert (Test)',
+      'Engra Lecture Alert (Test)',
       {
         body: 'Upcoming Lecture: CSC 301 starts in 10 minutes in Turing Hall. Lecture notifications are active!',
       },

@@ -14,9 +14,9 @@ export default defineConfig(() => {
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
           id: '/',
-          name: 'Chronos Timetable',
-          short_name: 'Chronos',
-          description: 'Smart lecture timetable with clash prevention, cross-device sync, and offline support.',
+          name: 'Engra Timetable',
+          short_name: 'Engra',
+          description: 'Smart lecture timetable with clash prevention and offline support.',
           theme_color: '#4f46e5',
           background_color: '#0f172a',
           display: 'standalone',
@@ -45,6 +45,7 @@ export default defineConfig(() => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+          maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
         devOptions: {
           enabled: true,

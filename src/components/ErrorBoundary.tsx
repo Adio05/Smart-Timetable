@@ -21,7 +21,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Chronos ErrorBoundary caught:', error, errorInfo);
+    console.error('Engra ErrorBoundary caught:', error, errorInfo);
   }
 
   private handleReload = () => {
