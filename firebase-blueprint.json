@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User preferences and settings for the timetable app",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "User unique identifier"
+        },
+        "notificationsEnabled": {
+          "type": "boolean",
+          "description": "Whether push notifications are enabled"
+        },
+        "notificationLeadMinutes": {
+          "type": "number",
+          "description": "Minutes before class to trigger notification"
+        },
+        "activeSemester": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Current semester name"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp of creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["id", "notificationsEnabled", "notificationLeadMinutes"]
+    },
+    "ClassItem": {
+      "title": "ClassItem",
+      "description": "Individual lecture or class scheduled in the 9am-4pm timetable",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the class"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner user ID"
+        },
+        "courseCode": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Course code (e.g. CS101)"
+        },
+        "courseTitle": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Course title or subject name"
+        },
+        "dayOfWeek": {
+          "type": "string",
+          "enum": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+          "description": "Day of week"
+        },
+        "startTime": {
+          "type": "string",
+          "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+          "description": "Class start time in HH:mm (between 09:00 and 16:00)"
+        },
+        "endTime": {
+          "type": "string",
+          "pattern": "^[0-2][0-9]:[0-5][0-9]$",
+          "description": "Class end time in HH:mm (between 09:00 and 16:00)"
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Lecture hall or lab room"
+        },
+        "instructor": {
+          "type": "string",
+          "maxLength": 80,
+          "description": "Lecturer or instructor name"
+        },
+        "color": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Hex or theme color token"
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional preparation notes or room access info"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Last update timestamp"
+        }
+      },
+      "required": ["id", "userId", "courseCode", "courseTitle", "dayOfWeek", "startTime", "endTime"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "User profile and timetable settings"
+    },
+    "/users/{userId}/classes/{classId}": {
+      "schema": {
+        "$ref": "#/entities/ClassItem"
+      },
+      "description": "Individual lecture class items belonging to the user"
+    }
+  }
+}

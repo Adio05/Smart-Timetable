@@ -1,0 +1,6 @@
+{
+  "name": "Chronos Timetable - Smart Lecture Scheduler",
+  "description": "Smart timetable with strict clash prevention, 9am-4pm schedule grid, cross-device sync, upcoming lecture push notifications, and full offline support.",
+  "requestFramePermissions": ["notifications"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Catch-All Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidDay(day) {
+      return day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    }
+
+    function isValidTime(timeStr) {
+      return timeStr is string && timeStr.matches('^[0-2][0-9]:[0-5][0-9]$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['id', 'notificationsEnabled', 'notificationLeadMinutes']) &&
+        data.keys().hasOnly(['id', 'notificationsEnabled', 'notificationLeadMinutes', 'activeSemester', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.notificationsEnabled is bool &&
+        data.notificationLeadMinutes is number &&
+        data.notificationLeadMinutes >= 0 && data.notificationLeadMinutes <= 120 &&
+        (!('activeSemester' in data) || (data.activeSemester is string && data.activeSemester.size() <= 64)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    function isValidClassItem(data) {
+      return data.keys().hasAll(['id', 'userId', 'courseCode', 'courseTitle', 'dayOfWeek', 'startTime', 'endTime']) &&
+        data.keys().hasOnly(['id', 'userId', 'courseCode', 'courseTitle', 'dayOfWeek', 'startTime', 'endTime', 'location', 'instructor', 'color', 'notes', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.userId is string && data.userId.size() <= 128 &&
+        data.courseCode is string && data.courseCode.size() > 0 && data.courseCode.size() <= 30 &&
+        data.courseTitle is string && data.courseTitle.size() > 0 && data.courseTitle.size() <= 100 &&
+        isValidDay(data.dayOfWeek) &&
+        isValidTime(data.startTime) &&
+        isValidTime(data.endTime) &&
+        (!('location' in data) || (data.location is string && data.location.size() <= 100)) &&
+        (!('instructor' in data) || (data.instructor is string && data.instructor.size() <= 80)) &&
+        (!('color' in data) || (data.color is string && data.color.size() <= 30)) &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    // User Profile Documents
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+                    incoming().id == request.auth.uid &&
+                    isValidUserProfile(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+                    incoming().id == existing().id &&
+                    isValidUserProfile(incoming());
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+      // User Classes Subcollection
+      match /classes/{classId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(classId) && request.auth.uid == userId;
+        allow list: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+        allow create: if isSignedIn() && isValidId(userId) && isValidId(classId) && request.auth.uid == userId &&
+                      incoming().userId == request.auth.uid &&
+                      incoming().id == classId &&
+                      isValidClassItem(incoming());
+        allow update: if isSignedIn() && isValidId(userId) && isValidId(classId) && request.auth.uid == userId &&
+                      incoming().userId == existing().userId &&
+                      incoming().id == existing().id &&
+                      isValidClassItem(incoming());
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(classId) && request.auth.uid == userId;
+      }
+    }
+  }
+}
