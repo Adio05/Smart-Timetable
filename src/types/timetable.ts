@@ -31,8 +31,11 @@ export interface ClassItem {
   courseCode: string;
   courseTitle: string;
   dayOfWeek: DayOfWeek;
-  startTime: string; // "09:00" to "16:00"
-  endTime: string;   // "09:30" to "16:00"
+  /** Additional weekly meeting days. `dayOfWeek` remains the primary day for old saved data. */
+  daysOfWeek?: DayOfWeek[];
+  startTime: string; // "00:00" to "23:30"
+  /** An end time at or before the start time continues into the following day. */
+  endTime: string;
   location: string;
   instructor: string;
   color: string;
@@ -65,16 +68,11 @@ export interface TimeSlotOption {
   minutes: number;
 }
 
-export const TIMETABLE_HOURS = [
-  { hour: 9, label: '9:00 AM', time24: '09:00' },
-  { hour: 10, label: '10:00 AM', time24: '10:00' },
-  { hour: 11, label: '11:00 AM', time24: '11:00' },
-  { hour: 12, label: '12:00 PM', time24: '12:00' },
-  { hour: 13, label: '1:00 PM', time24: '13:00' },
-  { hour: 14, label: '2:00 PM', time24: '14:00' },
-  { hour: 15, label: '3:00 PM', time24: '15:00' },
-  { hour: 16, label: '4:00 PM', time24: '16:00' },
-];
+export const TIMETABLE_HOURS = Array.from({ length: 24 }, (_, hour) => {
+  const suffix = hour < 12 ? 'AM' : 'PM';
+  const displayHour = hour % 12 || 12;
+  return { hour, label: `${displayHour}:00 ${suffix}`, time24: `${hour.toString().padStart(2, '0')}:00` };
+});
 
 export const COLOR_PALETTES = [
   { name: 'Indigo', bg: 'bg-indigo-500/15', border: 'border-indigo-500', text: 'text-indigo-600 dark:text-indigo-400', badge: 'bg-indigo-500 text-white', hex: '#6366f1' },

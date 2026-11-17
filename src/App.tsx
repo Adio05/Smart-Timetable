@@ -121,6 +121,7 @@ export default function App() {
       {
         id: editId,
         dayOfWeek: data.dayOfWeek,
+        daysOfWeek: data.daysOfWeek,
         startTime: data.startTime,
         endTime: data.endTime,
         courseCode: data.courseCode,

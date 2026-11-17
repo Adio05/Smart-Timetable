@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   ClassItem,
   DayOfWeek,
-  WORKDAYS,
   DAYS_OF_WEEK,
   COLOR_PALETTES,
 } from '../types/timetable';
@@ -38,9 +37,9 @@ interface ClassModalProps {
   showWeekends?: boolean;
 }
 
-// Generate valid time select options between 09:00 and 16:00
+// 30-minute choices across a complete 24-hour day.
 const TIME_OPTIONS: { value: string; label: string }[] = [];
-for (let m = TIMETABLE_START_MINUTES; m <= TIMETABLE_END_MINUTES; m += 30) {
+for (let m = TIMETABLE_START_MINUTES; m < TIMETABLE_END_MINUTES; m += 30) {
   const val = minutesToTime(m);
   TIME_OPTIONS.push({ value: val, label: formatTime12h(val) });
 }
@@ -56,12 +55,13 @@ export const ClassModal: React.FC<ClassModalProps> = ({
   initialStartTime = '09:00',
   showWeekends = false,
 }) => {
-  const days = showWeekends ? DAYS_OF_WEEK : WORKDAYS;
+  const days = DAYS_OF_WEEK;
 
   // Form states
   const [courseCode, setCourseCode] = useState('');
   const [courseTitle, setCourseTitle] = useState('');
   const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(initialDay);
+  const [daysOfWeek, setDaysOfWeek] = useState<DayOfWeek[]>([initialDay]);
   const [startTime, setStartTime] = useState(initialStartTime);
   const [endTime, setEndTime] = useState('10:00');
   const [location, setLocation] = useState('');
@@ -76,6 +76,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
       setCourseCode(editingClass.courseCode);
       setCourseTitle(editingClass.courseTitle);
       setDayOfWeek(editingClass.dayOfWeek);
+      setDaysOfWeek(editingClass.daysOfWeek?.length ? editingClass.daysOfWeek : [editingClass.dayOfWeek]);
       setStartTime(editingClass.startTime);
       setEndTime(editingClass.endTime);
       setLocation(editingClass.location || '');
@@ -87,13 +88,11 @@ export const ClassModal: React.FC<ClassModalProps> = ({
       setCourseCode('');
       setCourseTitle('');
       setDayOfWeek(initialDay);
+      setDaysOfWeek([initialDay]);
       setStartTime(initialStartTime);
 
-      // Default end time is 1 hour after start time if within bounds
-      const [h, m] = initialStartTime.split(':').map(Number);
-      const nextHour = Math.min(16, (h || 9) + 1);
-      const defEnd = `${nextHour.toString().padStart(2, '0')}:${(m || 0).toString().padStart(2, '0')}`;
-      setEndTime(defEnd > '16:00' ? '16:00' : defEnd);
+      const startMinutes = timeToMinutes(initialStartTime);
+      setEndTime(minutesToTime(startMinutes + 60));
 
       setLocation('');
       setInstructor('');
@@ -109,6 +108,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
       {
         id: editingClass?.id,
         dayOfWeek,
+        daysOfWeek,
         startTime,
         endTime,
         courseCode,
@@ -117,7 +117,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
       allClasses,
       editingClass?.id
     );
-  }, [dayOfWeek, startTime, endTime, courseCode, courseTitle, allClasses, editingClass]);
+  }, [dayOfWeek, daysOfWeek, startTime, endTime, courseCode, courseTitle, allClasses, editingClass]);
 
   // Boundary validation
   const boundaryCheck = useMemo(() => {
@@ -137,6 +137,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
         courseCode: courseCode.trim().toUpperCase(),
         courseTitle: courseTitle.trim(),
         dayOfWeek,
+        daysOfWeek,
         startTime,
         endTime,
         location: location.trim(),
@@ -154,6 +155,14 @@ export const ClassModal: React.FC<ClassModalProps> = ({
     setEndTime(s.endTime);
   };
 
+  const toggleDay = (day: DayOfWeek) => {
+    setDaysOfWeek((current) => {
+      if (current.includes(day)) return current.length === 1 ? current : current.filter((value) => value !== day);
+      return [...current, day];
+    });
+    setDayOfWeek(day);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
       <div className="w-full max-w-xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden my-8 animate-in fade-in zoom-in-95">
@@ -168,7 +177,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
                 {editingClass ? 'Edit Scheduled Lecture' : 'Schedule New Class'}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Official Timetable (9:00 AM – 4:00 PM) with Automatic Clash Prevention
+                24-hour scheduling with overnight and cross-day clash prevention
               </p>
             </div>
           </div>
@@ -265,19 +274,19 @@ export const ClassModal: React.FC<ClassModalProps> = ({
             </div>
           </div>
 
-          {/* Day of Week */}
+          {/* Recurring weekly meeting days */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Day of Week *
+              Meets on *
             </label>
             <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
               {days.map((day) => (
                 <button
                   type="button"
                   key={day}
-                  onClick={() => setDayOfWeek(day)}
+                  onClick={() => toggleDay(day)}
                   className={`py-2 px-2 rounded-xl text-xs font-semibold transition ${
-                    dayOfWeek === day
+                    daysOfWeek.includes(day)
                       ? 'bg-indigo-600 text-white shadow-xs'
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
                   }`}
@@ -288,11 +297,13 @@ export const ClassModal: React.FC<ClassModalProps> = ({
             </div>
           </div>
 
-          {/* Time Selection (09:00 - 16:00) */}
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 -mt-2">Choose one or more days. If the end time is earlier than the start time, the class continues overnight.</p>
+
+          {/* Time Selection */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Start Time (9:00 AM - 3:30 PM) *
+                Start Time *
               </label>
               <div className="relative">
                 <Clock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -301,7 +312,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
                   onChange={(e) => setStartTime(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 >
-                  {TIME_OPTIONS.slice(0, -1).map((opt) => (
+                  {TIME_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
@@ -312,7 +323,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                End Time (Up to 4:00 PM) *
+                End Time *
               </label>
               <div className="relative">
                 <Clock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
@@ -321,7 +332,7 @@ export const ClassModal: React.FC<ClassModalProps> = ({
                   onChange={(e) => setEndTime(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 >
-                  {TIME_OPTIONS.slice(1).map((opt) => (
+                  {TIME_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>

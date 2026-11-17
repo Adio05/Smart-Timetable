@@ -6,7 +6,7 @@ import {
   DAYS_OF_WEEK,
   COLOR_PALETTES,
 } from '../types/timetable';
-import { formatTime12h, timeToMinutes } from '../lib/clashDetector';
+import { formatTime12h, getClassDays, getClassSegmentsOnDay, getDurationMinutes, timeToMinutes } from '../lib/clashDetector';
 import { Search, Clock, MapPin, User, Plus, BookOpen, Layers } from 'lucide-react';
 
 interface AgendaViewProps {
@@ -37,16 +37,14 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
   });
 
   // Calculate statistics
-  const totalMinutes = classes.reduce((acc, c) => {
-    return acc + (timeToMinutes(c.endTime) - timeToMinutes(c.startTime));
-  }, 0);
+  const totalMinutes = classes.reduce((acc, c) => acc + getClassDays(c).length * getDurationMinutes(c.startTime, c.endTime), 0);
   const totalWeeklyHours = (totalMinutes / 60).toFixed(1);
 
   // Find busiest day
   let busiestDay: string = 'None';
   let maxCount = 0;
   activeDays.forEach((day) => {
-    const count = classes.filter((c) => c.dayOfWeek === day).length;
+    const count = classes.reduce((total, c) => total + getClassSegmentsOnDay(c, day).length, 0);
     if (count > maxCount) {
       maxCount = count;
       busiestDay = `${day} (${count})`;
@@ -125,8 +123,8 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
       <div className="space-y-6">
         {activeDays.map((day) => {
           const dayItems = filtered
-            .filter((c) => c.dayOfWeek === day)
-            .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+            .filter((c) => getClassSegmentsOnDay(c, day).length > 0)
+            .sort((a, b) => (getClassSegmentsOnDay(a, day)[0]?.start ?? timeToMinutes(a.startTime)) - (getClassSegmentsOnDay(b, day)[0]?.start ?? timeToMinutes(b.startTime)));
 
           if (searchTerm && dayItems.length === 0) {
             return null;
@@ -194,7 +192,7 @@ export const AgendaView: React.FC<AgendaViewProps> = ({
                         <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
                           <span className="inline-flex items-center gap-1 text-xs font-black bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-3 py-1.5 rounded-lg shadow-xs">
                             <Clock className="w-3.5 h-3.5 stroke-[2.5]" />
-                            {formatTime12h(item.startTime)} – {formatTime12h(item.endTime)}
+                            {getClassSegmentsOnDay(item, day)[0]?.start === 0 && item.startTime !== '00:00' ? 'Continues until ' : ''}{formatTime12h(getClassSegmentsOnDay(item, day)[0]?.start === 0 ? '00:00' : item.startTime)} – {formatTime12h(item.endTime)}
                           </span>
                         </div>
                       </div>

@@ -4,14 +4,12 @@ import {
   DayOfWeek,
   WORKDAYS,
   DAYS_OF_WEEK,
-  TIMETABLE_HOURS,
   COLOR_PALETTES,
 } from '../types/timetable';
 import {
   formatTime12h,
   timeToMinutes,
-  TIMETABLE_START_MINUTES,
-  TIMETABLE_END_MINUTES,
+  getClassSegmentsOnDay,
 } from '../lib/clashDetector';
 import { getCurrentDayOfWeek } from '../lib/notifications';
 import { Clock, MapPin, User, FileText, Plus, CheckCircle2 } from 'lucide-react';
@@ -36,8 +34,8 @@ export const DayView: React.FC<DayViewProps> = ({
   );
 
   const dayClasses = classes
-    .filter((c) => c.dayOfWeek === selectedDay)
-    .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
+    .filter((c) => getClassSegmentsOnDay(c, selectedDay).length > 0)
+    .sort((a, b) => (getClassSegmentsOnDay(a, selectedDay)[0]?.start ?? timeToMinutes(a.startTime)) - (getClassSegmentsOnDay(b, selectedDay)[0]?.start ?? timeToMinutes(b.startTime)));
 
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
@@ -45,7 +43,7 @@ export const DayView: React.FC<DayViewProps> = ({
 
   // Calculate total class hours
   const totalClassMinutes = dayClasses.reduce((acc, c) => {
-    return acc + (timeToMinutes(c.endTime) - timeToMinutes(c.startTime));
+    return acc + getClassSegmentsOnDay(c, selectedDay).reduce((sum, segment) => sum + segment.end - segment.start, 0);
   }, 0);
   const totalHours = (totalClassMinutes / 60).toFixed(1);
 
@@ -61,7 +59,7 @@ export const DayView: React.FC<DayViewProps> = ({
         {activeDays.map((day) => {
           const isSelected = day === selectedDay;
           const isCurrentToday = day === currentDay;
-          const dayCount = classes.filter((c) => c.dayOfWeek === day).length;
+          const dayCount = classes.reduce((count, c) => count + getClassSegmentsOnDay(c, day).length, 0);
 
           return (
             <button
@@ -105,7 +103,7 @@ export const DayView: React.FC<DayViewProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {dayClasses.length} lectures scheduled • {totalHours} total class hours between 9:00 AM and 4:00 PM
+            {dayClasses.length} lectures scheduled • {totalHours} total class hours across 24 hours
           </p>
         </div>
 
@@ -129,7 +127,7 @@ export const DayView: React.FC<DayViewProps> = ({
               No classes scheduled for {selectedDay}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-4">
-              Your 9am-4pm schedule is completely open on this day. Click below to add a lecture.
+              Your 24-hour schedule is completely open on this day. Click below to add a lecture.
             </p>
             <button
               onClick={() => onAddClassAtSlot(selectedDay, '09:00')}
@@ -170,7 +168,7 @@ export const DayView: React.FC<DayViewProps> = ({
                         {formatTime12h(item.endTime)}
                       </div>
                       <span className="inline-block mt-1 text-[10px] font-extrabold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                        {endMin - startMin} mins
+                        {getClassSegmentsOnDay(item, selectedDay).reduce((sum, segment) => sum + segment.end - segment.start, 0)} mins
                       </span>
                     </div>
 
