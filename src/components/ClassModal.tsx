@@ -9,6 +9,7 @@ import {
   detectClash,
   validateTimetableBounds,
   formatTime12h,
+  timeToMinutes,
   minutesToTime,
   TIMETABLE_START_MINUTES,
   TIMETABLE_END_MINUTES,

@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Calendar,
   Plus,
   Bell,
   BellOff,
@@ -40,8 +39,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-16 gap-3">
           {/* Left: Branding "Engra" */}
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-indigo-500/20 shrink-0">
-              <Calendar className="w-5 h-5 stroke-[2.5]" />
+            <div className="w-10 h-10 rounded-xl overflow-hidden shadow-md shadow-indigo-500/20 shrink-0 bg-indigo-600">
+              <img src="/icon.svg" alt="Engra logo" className="w-full h-full object-cover" />
             </div>
             <div className="min-w-0">
               <h1 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
