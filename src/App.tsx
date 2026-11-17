@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { onIdTokenChanged, User } from 'firebase/auth';
 import {
   ClassItem,
   UserProfile,
@@ -9,7 +10,6 @@ import {
   saveLocalClasses,
   getLocalProfile,
   saveLocalProfile,
-  SAMPLE_COMPUTER_SCIENCE_CLASSES,
 } from './lib/offlineStorage';
 import {
   checkAndTriggerUpcomingClassNotifications,
@@ -17,8 +17,25 @@ import {
   getNotificationPermission,
 } from './lib/notifications';
 import { detectClash } from './lib/clashDetector';
+import { ADMIN_EMAIL, isAdminUser } from './lib/access';
+import {
+  auth,
+  loginWithGoogle,
+  loginWithEmail,
+  resendVerificationEmail,
+  logoutUser,
+  testFirestoreConnection,
+  subscribeToSharedClasses,
+  createSharedClass,
+  updateSharedClass,
+  deleteSharedClass,
+  replaceAllSharedClasses,
+  subscribeToUserProfile,
+  saveRemoteUserProfile,
+} from './lib/firebase';
 
 import { Header, ViewMode } from './components/Header';
+import { LoginScreen } from './components/LoginScreen';
 import { UpcomingLectureCard } from './components/UpcomingLectureCard';
 import { TimetableGrid } from './components/TimetableGrid';
 import { DayView } from './components/DayView';
@@ -29,26 +46,16 @@ import { PresetsModal } from './components/PresetsModal';
 import { Bell, X } from 'lucide-react';
 
 export default function App() {
-  // Core timetable state (stored locally on device, offline-ready)
-  const [classes, setClasses] = useState<ClassItem[]>(() => {
-    const local = getLocalClasses();
-    if (local && local.length > 0) return local;
-
-    // Seed default schedule on first launch
-    const timestamp = new Date().toISOString();
-    const initialSeed = SAMPLE_COMPUTER_SCIENCE_CLASSES.map((item, idx) => ({
-      ...item,
-      id: `cls_${Date.now()}_${idx}`,
-      userId: 'local_user',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }));
-    saveLocalClasses(initialSeed);
-    return initialSeed;
-  });
-
+  // Core timetable state (cached locally for offline support, updated in real time from Firestore when signed in)
+  const [classes, setClasses] = useState<ClassItem[]>(() => getLocalClasses());
   const [profile, setProfile] = useState<UserProfile>(getLocalProfile);
+  const [hasRemoteProfile, setHasRemoteProfile] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+
+  // Auth state
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const isAdmin = useMemo(() => isAdminUser(user), [user]);
 
   // Modal controls
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
@@ -70,6 +77,54 @@ export default function App() {
     }, 4500);
   }, []);
 
+  // Test Firestore connection on boot and listen to Firebase Auth token state
+  useEffect(() => {
+    testFirestoreConnection();
+    const unsubAuth = onIdTokenChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubAuth();
+  }, []);
+
+  // Subscribe to shared timetable and user preferences when signed in
+  useEffect(() => {
+    if (!user || !user.emailVerified) {
+      return;
+    }
+
+    const unsubClasses = subscribeToSharedClasses(
+      (remoteClasses) => {
+        setClasses(remoteClasses);
+        saveLocalClasses(remoteClasses);
+      },
+      (err) => {
+        console.error('Failed to subscribe to classes:', err);
+      }
+    );
+
+    const unsubProfile = subscribeToUserProfile(
+      user.uid,
+      (remoteProfile) => {
+        if (remoteProfile) {
+          setHasRemoteProfile(true);
+          setProfile(remoteProfile);
+          saveLocalProfile(remoteProfile);
+        } else {
+          setHasRemoteProfile(false);
+        }
+      },
+      (err) => {
+        console.error('Failed to subscribe to user profile:', err);
+      }
+    );
+
+    return () => {
+      unsubClasses();
+      unsubProfile();
+    };
+  }, [user]);
+
   // Periodic Upcoming Lecture Alert Dispatcher
   useEffect(() => {
     if (!profile.notificationsEnabled) return;
@@ -81,9 +136,8 @@ export default function App() {
         profile.soundEnabled,
         (msg, title) => showToast(msg, title)
       );
-    }, 30000); // Check every 30 seconds
+    }, 30000);
 
-    // Initial check
     checkAndTriggerUpcomingClassNotifications(
       classes,
       profile.notificationLeadMinutes,
@@ -94,13 +148,62 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [classes, profile.notificationsEnabled, profile.notificationLeadMinutes, profile.soundEnabled, showToast]);
 
-  // Calculate lecture status (Now & Next)
   const lectureStatus = useMemo(() => {
     return getLectureStatus(classes);
   }, [classes]);
 
+  const handleGoogleSignIn = async () => {
+    try {
+      const signedInUser = await loginWithGoogle();
+      if (isAdminUser(signedInUser)) {
+        showToast(`Signed in as Admin (${signedInUser.email}). You can add and edit classes at any time.`, 'Welcome Admin');
+      } else {
+        showToast(`Signed in as ${signedInUser.email}.`, 'Signed In');
+      }
+    } catch (error) {
+      console.error('Google Sign-In failed:', error);
+      throw error;
+    }
+  };
+
+  const handleEmailSignIn = async (email: string, password: string) => {
+    const signedInUser = await loginWithEmail(email, password);
+    if (isAdminUser(signedInUser)) {
+      showToast(`Signed in as Admin (${signedInUser.email}). You can add and edit classes at any time.`, 'Welcome Admin');
+    } else if (signedInUser.emailVerified) {
+      showToast(`Signed in as ${signedInUser.email}.`, 'Signed In');
+    }
+  };
+
+  const handleRefreshVerification = async () => {
+    if (!auth.currentUser) return;
+    await auth.currentUser.reload();
+    const refreshed = auth.currentUser;
+    if (refreshed.emailVerified) {
+      await refreshed.getIdToken(true);
+      setUser(refreshed);
+      showToast(`Email verified for ${refreshed.email}!`, 'Verified');
+    } else {
+      throw new Error('Email is not verified yet. Please click the verification link in your inbox first.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await logoutUser();
+      setHasRemoteProfile(false);
+      showToast('Signed out of Google account.', 'Signed Out');
+    } catch (error) {
+      console.error('Sign out failed:', error);
+    }
+  };
+
   // Handlers for classes
   const handleOpenAddModal = (day: DayOfWeek = 'Monday', startTime: string = '09:00') => {
+    if (!isAdmin) {
+      showToast(`Only admin (${ADMIN_EMAIL}) can schedule new classes.`, 'Admin Access Required');
+      return;
+    }
     setEditingClass(null);
     setModalSlot({ day, startTime });
     setIsClassModalOpen(true);
@@ -112,16 +215,19 @@ export default function App() {
     setIsClassModalOpen(true);
   };
 
-  const handleSaveClass = (
+  const handleSaveClass = async (
     data: Omit<ClassItem, 'id' | 'userId' | 'createdAt' | 'updatedAt'>,
     editId?: string
   ) => {
-    // Strict Clash Prevention validation
+    if (!user || !isAdmin) {
+      showToast(`Only admin (${ADMIN_EMAIL}) can modify classes.`, 'Permission Denied');
+      return;
+    }
+
     const clashCheck = detectClash(
       {
         id: editId,
         dayOfWeek: data.dayOfWeek,
-        daysOfWeek: data.daysOfWeek,
         startTime: data.startTime,
         endTime: data.endTime,
         courseCode: data.courseCode,
@@ -137,61 +243,69 @@ export default function App() {
     }
 
     const classId = editId || `cls_${Date.now()}`;
-    const timestamp = new Date().toISOString();
 
-    const fullClass: ClassItem = {
-      ...data,
-      id: classId,
-      userId: 'local_user',
-      createdAt: editId ? editingClass?.createdAt || timestamp : timestamp,
-      updatedAt: timestamp,
-    };
+    try {
+      if (editId) {
+        await updateSharedClass(editId, data);
+      } else {
+        await createSharedClass(classId, user.uid, data);
+      }
 
-    // Save directly to local storage
-    const updatedList = editId
-      ? classes.map((c) => (c.id === editId ? fullClass : c))
-      : [...classes, fullClass];
-
-    setClasses(updatedList);
-    saveLocalClasses(updatedList);
-
-    showToast(
-      editId
-        ? `Updated ${fullClass.courseCode}`
-        : `Scheduled ${fullClass.courseCode} (${fullClass.dayOfWeek} ${fullClass.startTime})`,
-      'Class Saved'
-    );
+      showToast(
+        editId
+          ? `Updated ${data.courseCode}`
+          : `Scheduled ${data.courseCode} (${data.dayOfWeek} ${data.startTime})`,
+        'Class Saved'
+      );
+    } catch (error) {
+      console.error('Error saving class:', error);
+      showToast('Failed to save class to Firestore. Check permissions and connection.', 'Save Error');
+    }
   };
 
-  const handleDeleteClass = (id: string) => {
-    const updatedList = classes.filter((c) => c.id !== id);
-    setClasses(updatedList);
-    saveLocalClasses(updatedList);
-    showToast(`Removed lecture from schedule`, 'Class Deleted');
+  const handleDeleteClass = async (id: string) => {
+    if (!user || !isAdmin) {
+      showToast(`Only admin (${ADMIN_EMAIL}) can delete classes.`, 'Permission Denied');
+      return;
+    }
+    try {
+      await deleteSharedClass(id);
+      showToast('Removed lecture from schedule', 'Class Deleted');
+    } catch (error) {
+      console.error('Error deleting class:', error);
+      showToast('Failed to delete class.', 'Delete Error');
+    }
   };
 
-  const handleApplyPreset = (preset: Omit<ClassItem, 'id' | 'userId'>[]) => {
-    const timestamp = new Date().toISOString();
-    const newItems: ClassItem[] = preset.map((item, idx) => ({
-      ...item,
-      id: `cls_${Date.now()}_${idx}`,
-      userId: 'local_user',
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    }));
-
-    setClasses(newItems);
-    saveLocalClasses(newItems);
-    showToast(`Applied preset schedule with ${newItems.length} lectures!`, 'Preset Loaded');
+  const handleApplyPreset = async (preset: Omit<ClassItem, 'id' | 'userId'>[]) => {
+    if (!user || !isAdmin) {
+      showToast(`Only admin (${ADMIN_EMAIL}) can load presets.`, 'Permission Denied');
+      return;
+    }
+    try {
+      await replaceAllSharedClasses(preset, user.uid);
+      showToast(`Applied preset schedule with ${preset.length} lectures!`, 'Preset Loaded');
+    } catch (error) {
+      console.error('Error applying preset:', error);
+      showToast('Failed to apply preset schedule.', 'Preset Error');
+    }
   };
 
-  const handleClearAll = () => {
-    setClasses([]);
-    saveLocalClasses([]);
-    showToast('All classes cleared. Your timetable is now empty.', 'Schedule Cleared');
+  const handleClearAll = async () => {
+    if (!user || !isAdmin) {
+      showToast(`Only admin (${ADMIN_EMAIL}) can clear the schedule.`, 'Permission Denied');
+      return;
+    }
+    try {
+      await replaceAllSharedClasses([], user.uid);
+      showToast('All classes cleared. The timetable is now empty.', 'Schedule Cleared');
+    } catch (error) {
+      console.error('Error clearing schedule:', error);
+      showToast('Failed to clear schedule.', 'Clear Error');
+    }
   };
 
-  const handleUpdateNotificationSettings = (settings: {
+  const handleUpdateNotificationSettings = async (settings: {
     notificationsEnabled: boolean;
     notificationLeadMinutes: number;
     soundEnabled: boolean;
@@ -199,10 +313,20 @@ export default function App() {
     const updated: UserProfile = {
       ...profile,
       ...settings,
+      id: user?.uid || profile.id,
       updatedAt: new Date().toISOString(),
     };
     setProfile(updated);
     saveLocalProfile(updated);
+
+    if (user && user.emailVerified) {
+      try {
+        await saveRemoteUserProfile(user.uid, updated, hasRemoteProfile);
+        setHasRemoteProfile(true);
+      } catch (error) {
+        console.error('Error saving user settings:', error);
+      }
+    }
 
     showToast(
       settings.notificationsEnabled
@@ -211,6 +335,27 @@ export default function App() {
       'Settings Updated'
     );
   };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user || !user.emailVerified) {
+    return (
+      <LoginScreen
+        onGoogleSignIn={handleGoogleSignIn}
+        onEmailSignIn={handleEmailSignIn}
+        pendingVerificationEmail={user && !user.emailVerified ? user.email || 'your email' : null}
+        onResendVerification={resendVerificationEmail}
+        onRefreshVerification={handleRefreshVerification}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
@@ -224,6 +369,11 @@ export default function App() {
         notificationsEnabled={profile.notificationsEnabled}
         notificationPermission={getNotificationPermission()}
         classCount={classes.length}
+        user={user}
+        isAdmin={isAdmin}
+        authLoading={authLoading}
+        onGoogleSignIn={handleGoogleSignIn}
+        onSignOut={handleSignOut}
       />
 
       {/* Main Container */}
@@ -243,6 +393,7 @@ export default function App() {
           <TimetableGrid
             classes={classes}
             showWeekends={profile.showWeekends || false}
+            isAdmin={isAdmin}
             onSelectClass={handleOpenEditModal}
             onAddClassAtSlot={handleOpenAddModal}
           />
@@ -252,6 +403,7 @@ export default function App() {
           <DayView
             classes={classes}
             showWeekends={profile.showWeekends || false}
+            isAdmin={isAdmin}
             onSelectClass={handleOpenEditModal}
             onAddClassAtSlot={handleOpenAddModal}
           />
@@ -261,6 +413,7 @@ export default function App() {
           <AgendaView
             classes={classes}
             showWeekends={profile.showWeekends || false}
+            isAdmin={isAdmin}
             onSelectClass={handleOpenEditModal}
             onAddClass={() => handleOpenAddModal('Monday', '09:00')}
           />
@@ -286,7 +439,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Class Modal (Create / Edit with live clash detection) */}
+      {/* Class Modal (Create / Edit for Admin, Read-only Details for Viewers) */}
       <ClassModal
         isOpen={isClassModalOpen}
         onClose={() => setIsClassModalOpen(false)}
@@ -297,6 +450,7 @@ export default function App() {
         initialDay={modalSlot.day}
         initialStartTime={modalSlot.startTime}
         showWeekends={profile.showWeekends || false}
+        isAdmin={isAdmin}
       />
 
       {/* Notification Settings Modal */}
@@ -309,14 +463,16 @@ export default function App() {
         onUpdateSettings={handleUpdateNotificationSettings}
       />
 
-      {/* Presets & Sample Schedules Modal */}
-      <PresetsModal
-        isOpen={isPresetsModalOpen}
-        onClose={() => setIsPresetsModalOpen(false)}
-        onApplyPreset={handleApplyPreset}
-        onClearAll={handleClearAll}
-        classCount={classes.length}
-      />
+      {/* Presets & Sample Schedules Modal (Admin only) */}
+      {isAdmin && (
+        <PresetsModal
+          isOpen={isPresetsModalOpen}
+          onClose={() => setIsPresetsModalOpen(false)}
+          onApplyPreset={handleApplyPreset}
+          onClearAll={handleClearAll}
+          classCount={classes.length}
+        />
+      )}
     </div>
   );
 }

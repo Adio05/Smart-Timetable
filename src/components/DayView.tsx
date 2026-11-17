@@ -6,17 +6,14 @@ import {
   DAYS_OF_WEEK,
   COLOR_PALETTES,
 } from '../types/timetable';
-import {
-  formatTime12h,
-  timeToMinutes,
-  getClassSegmentsOnDay,
-} from '../lib/clashDetector';
+import { formatTime12h, timeToMinutes } from '../lib/clashDetector';
 import { getCurrentDayOfWeek } from '../lib/notifications';
 import { Clock, MapPin, User, FileText, Plus, CheckCircle2 } from 'lucide-react';
 
 interface DayViewProps {
   classes: ClassItem[];
   showWeekends: boolean;
+  isAdmin: boolean;
   onSelectClass: (c: ClassItem) => void;
   onAddClassAtSlot: (day: DayOfWeek, startTime: string) => void;
 }
@@ -24,6 +21,7 @@ interface DayViewProps {
 export const DayView: React.FC<DayViewProps> = ({
   classes,
   showWeekends,
+  isAdmin,
   onSelectClass,
   onAddClassAtSlot,
 }) => {
@@ -34,16 +32,15 @@ export const DayView: React.FC<DayViewProps> = ({
   );
 
   const dayClasses = classes
-    .filter((c) => getClassSegmentsOnDay(c, selectedDay).length > 0)
-    .sort((a, b) => (getClassSegmentsOnDay(a, selectedDay)[0]?.start ?? timeToMinutes(a.startTime)) - (getClassSegmentsOnDay(b, selectedDay)[0]?.start ?? timeToMinutes(b.startTime)));
+    .filter((c) => c.dayOfWeek === selectedDay)
+    .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
   const now = new Date();
   const currentMinutes = now.getHours() * 60 + now.getMinutes();
   const isToday = selectedDay === currentDay;
 
-  // Calculate total class hours
   const totalClassMinutes = dayClasses.reduce((acc, c) => {
-    return acc + getClassSegmentsOnDay(c, selectedDay).reduce((sum, segment) => sum + segment.end - segment.start, 0);
+    return acc + (timeToMinutes(c.endTime) - timeToMinutes(c.startTime));
   }, 0);
   const totalHours = (totalClassMinutes / 60).toFixed(1);
 
@@ -54,32 +51,30 @@ export const DayView: React.FC<DayViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Day Selector Pill Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 p-1.5 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/60 dark:border-slate-700/60">
+      {/* Day Selector Tabs */}
+      <div className="flex items-center gap-1.5 overflow-x-auto p-1.5 bg-[#0B2559] dark:bg-slate-900 rounded-2xl border-2 border-[#071A40] dark:border-slate-700 shadow-sm">
         {activeDays.map((day) => {
           const isSelected = day === selectedDay;
           const isCurrentToday = day === currentDay;
-          const dayCount = classes.reduce((count, c) => count + getClassSegmentsOnDay(c, day).length, 0);
+          const dayCount = classes.filter((c) => c.dayOfWeek === day).length;
 
           return (
             <button
               key={day}
               onClick={() => setSelectedDay(day)}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs whitespace-nowrap transition ${
                 isSelected
-                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  ? 'bg-indigo-600 text-white font-black shadow-md'
+                  : 'text-indigo-100 hover:bg-white/10 hover:text-white font-extrabold'
               }`}
             >
-              <span>{day}</span>
-              {isCurrentToday && (
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-              )}
+              <span className="uppercase tracking-wide">{day}</span>
+              {isCurrentToday && <span className="w-2 h-2 rounded-full bg-rose-400" />}
               <span
-                className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                className={`text-[10px] px-1.5 py-0.5 rounded-full font-black ${
                   isSelected
-                    ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400'
-                    : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    ? 'bg-white text-indigo-700'
+                    : 'bg-white/15 text-white'
                 }`}
               >
                 {dayCount}
@@ -90,52 +85,58 @@ export const DayView: React.FC<DayViewProps> = ({
       </div>
 
       {/* Day Header Summary */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-slate-200 dark:border-slate-800 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">
               {selectedDay}'s Lecture Schedule
             </h2>
             {isToday && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500 text-white">
+              <span className="px-2 py-0.5 rounded-full text-xs font-black bg-rose-500 text-white">
                 TODAY
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            {dayClasses.length} lectures scheduled • {totalHours} total class hours across 24 hours
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
+            {dayClasses.length} lectures scheduled • {totalHours} total class hours
           </p>
         </div>
 
-        <button
-          onClick={() => onAddClassAtSlot(selectedDay, '09:00')}
-          className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 font-semibold text-xs px-3.5 py-2 rounded-xl transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Lecture on {selectedDay}</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => onAddClassAtSlot(selectedDay, '09:00')}
+            className="flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 text-indigo-600 dark:text-indigo-400 font-bold text-xs px-3.5 py-2 rounded-xl transition"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Add Lecture on {selectedDay}</span>
+          </button>
+        )}
       </div>
 
       {/* Hourly Timeline Stack */}
       <div className="space-y-3">
         {dayClasses.length === 0 ? (
-          <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-6">
+          <div className="text-center py-16 bg-white dark:bg-slate-900 rounded-2xl border-2 border-slate-200 dark:border-slate-800 p-6">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mx-auto mb-3">
               <Clock className="w-6 h-6" />
             </div>
-            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
+            <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
               No classes scheduled for {selectedDay}
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-4">
-              Your 24-hour schedule is completely open on this day. Click below to add a lecture.
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 max-w-sm mx-auto mt-1 mb-4">
+              {isAdmin
+                ? 'This day is open. Click below to schedule a class at any time.'
+                : 'No lectures have been scheduled for this day yet.'}
             </p>
-            <button
-              onClick={() => onAddClassAtSlot(selectedDay, '09:00')}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 shadow transition"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Schedule 9:00 AM Class</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => onAddClassAtSlot(selectedDay, '09:00')}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 shadow transition"
+              >
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>Add Class</span>
+              </button>
+            )}
           </div>
         ) : (
           dayClasses.map((item) => {
@@ -168,7 +169,7 @@ export const DayView: React.FC<DayViewProps> = ({
                         {formatTime12h(item.endTime)}
                       </div>
                       <span className="inline-block mt-1 text-[10px] font-extrabold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
-                        {getClassSegmentsOnDay(item, selectedDay).reduce((sum, segment) => sum + segment.end - segment.start, 0)} mins
+                        {endMin - startMin} mins
                       </span>
                     </div>
 
@@ -226,8 +227,8 @@ export const DayView: React.FC<DayViewProps> = ({
                   </div>
 
                   <div className="flex sm:flex-col items-center sm:items-end justify-between shrink-0">
-                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">
-                      Edit Class →
+                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline">
+                      {isAdmin ? 'Edit Class →' : 'View Details →'}
                     </span>
                   </div>
                 </div>

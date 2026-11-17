@@ -179,7 +179,7 @@ export const PresetsModal: React.FC<PresetsModalProps> = ({
                 Timetable Schedule Presets
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Instantly load sample 9am-4pm schedules or reset
+                Instantly load sample schedules or reset
               </p>
             </div>
           </div>
@@ -280,10 +280,8 @@ export const PresetsModal: React.FC<PresetsModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (window.confirm('Are you sure you want to clear your entire timetable?')) {
-                  onClearAll();
-                  onClose();
-                }
+                onClearAll();
+                onClose();
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl text-xs font-semibold transition"
             >

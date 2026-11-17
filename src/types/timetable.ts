@@ -28,14 +28,12 @@ export const WORKDAYS: DayOfWeek[] = [
 export interface ClassItem {
   id: string;
   userId: string;
+  visibility?: 'shared';
   courseCode: string;
   courseTitle: string;
   dayOfWeek: DayOfWeek;
-  /** Additional weekly meeting days. `dayOfWeek` remains the primary day for old saved data. */
-  daysOfWeek?: DayOfWeek[];
-  startTime: string; // "00:00" to "23:30"
-  /** An end time at or before the start time continues into the following day. */
-  endTime: string;
+  startTime: string; // "00:00" to "23:59"
+  endTime: string; // "00:15" to "24:00"
   location: string;
   instructor: string;
   color: string;
@@ -68,10 +66,17 @@ export interface TimeSlotOption {
   minutes: number;
 }
 
-export const TIMETABLE_HOURS = Array.from({ length: 24 }, (_, hour) => {
+export const TIMETABLE_HOURS = Array.from({ length: 25 }, (_, hour) => {
+  if (hour === 24) {
+    return { hour: 24, label: '12:00 AM', time24: '24:00' };
+  }
   const suffix = hour < 12 ? 'AM' : 'PM';
   const displayHour = hour % 12 || 12;
-  return { hour, label: `${displayHour}:00 ${suffix}`, time24: `${hour.toString().padStart(2, '0')}:00` };
+  return {
+    hour,
+    label: `${displayHour}:00 ${suffix}`,
+    time24: `${hour.toString().padStart(2, '0')}:00`,
+  };
 });
 
 export const COLOR_PALETTES = [

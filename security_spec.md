@@ -1,26 +1,26 @@
-# Security Specification: Timetable App
+# Security Specification: Engra Timetable App
 
 ## 1. Data Invariants
-1. User profile can only be accessed or modified by its authenticated owner (`request.auth.uid == userId`).
-2. Class items belong exclusively to the user under `/users/{userId}/classes/{classId}`.
-3. Users cannot create or modify classes under another user's path (`incoming().userId == request.auth.uid && userId == request.auth.uid`).
-4. Path variables `{userId}` and `{classId}` must be valid IDs matching `^[a-zA-Z0-9_\-]+$` and length <= 128 characters.
-5. All string fields must adhere strictly to length limits (e.g. `courseCode <= 30`, `courseTitle <= 100`, `location <= 100`, `notes <= 500`).
+1. Shared timetable classes under `/classes/{classId}` are readable by signed-in verified users (`visibility == 'shared'`), and can ONLY be created, updated, or deleted by the verified admin (`adiofem.99@gmail.com` with `email_verified == true` or admin document in `/admins/{uid}`).
+2. User preferences under `/users/{userId}` can only be read, created, updated, or deleted by the authenticated verified owner (`request.auth.uid == userId`).
+3. Admin cannot be self-assigned in user profiles or `/admins/{adminId}` (client writes to `/admins` are blocked).
+4. Path variables `{userId}`, `{classId}`, and `{adminId}` must be valid IDs matching `^[a-zA-Z0-9_\-]+$` and length <= 128 characters.
+5. All string fields must adhere strictly to length limits (`courseCode <= 30`, `courseTitle <= 100`, `location <= 100`, `instructor <= 80`, `color <= 30`, `notes <= 500`, `activeSemester <= 64`).
 6. `dayOfWeek` must be one of the seven valid week days.
-7. `startTime` and `endTime` must match `^[0-2][0-9]:[0-5][0-9]$`.
-8. Unauthenticated requests are completely rejected. Blanket queries are prohibited; queries are strictly bounded to the user's subcollection.
-9. Immutability: `userId` and `id` cannot be altered on update (`incoming().userId == existing().userId`).
+7. `startTime` must match `^([01][0-9]|2[0-3]):[0-5][0-9]$` and `endTime` must match `^(([01][0-9]|2[0-3]):[0-5][0-9]|24:00)$`.
+8. Unauthenticated requests are completely rejected. List queries on `/classes` require `resource.data.visibility == 'shared'`.
+9. Immutability & Temporal Integrity: `userId`, `id`, and `createdAt` cannot be altered on update; `createdAt` and `updatedAt` must equal `request.time` on create and `updatedAt == request.time` on update.
 
 ## 2. The Dirty Dozen Payloads
-1. **Unauthenticated Read/Write**: Attempt to read `/users/user123/classes` without `request.auth`. Expected: `PERMISSION_DENIED`.
-2. **Cross-Tenant Impersonation**: User A (`auth.uid: userA`) tries to read or write to `/users/userB/classes/c1`. Expected: `PERMISSION_DENIED`.
-3. **Payload Spoofing**: User A sends `userId: "userB"` inside their own document `/users/userA/classes/c1`. Expected: `PERMISSION_DENIED`.
-4. **Denial-of-Wallet (Huge String)**: Injecting 2MB string into `courseTitle` or `notes`. Expected: `PERMISSION_DENIED` (`size() <= 100` / `size() <= 500`).
-5. **ID Poisoning**: Requesting document with malicious path `../etc` or 1KB junk characters. Expected: `PERMISSION_DENIED` (`isValidId` check).
-6. **Invalid Day of Week**: Sending `dayOfWeek: "Someday"`. Expected: `PERMISSION_DENIED`.
-7. **Malformed Time Format**: Sending `startTime: "9am"` instead of `"09:00"`. Expected: `PERMISSION_DENIED`.
-8. **Shadow Field Injection**: Adding unauthorized field `__adminOverride: true` during class creation. Expected: `PERMISSION_DENIED` (`keys().hasOnly(...)`).
-9. **Immutable Key Tampering**: Updating an existing class to mutate `userId` to another user. Expected: `PERMISSION_DENIED`.
-10. **Global Catch-All Probe**: Attempting to read `/random_secrets` or non-existent root collection. Expected: `PERMISSION_DENIED`.
-11. **Profile Role Escalation**: User attempting to set `isAdmin: true` in user profile. Expected: `PERMISSION_DENIED`.
-12. **Blanket Query Scraping**: Attempting to query collectionGroup('classes') without user boundary. Expected: `PERMISSION_DENIED`.
+1. **Unauthenticated Read/Write**: Attempt to read `/classes` without `request.auth`. Expected: `PERMISSION_DENIED`.
+2. **Non-Admin Class Creation**: Non-admin authenticated user tries to create `/classes/c1`. Expected: `PERMISSION_DENIED`.
+3. **Email Spoofing Attack**: User with `email == "adiofem.99@gmail.com"` and `email_verified == false` attempts to write to `/classes/c1`. Expected: `PERMISSION_DENIED`.
+4. **Cross-Tenant Profile Impersonation**: User A tries to read or write `/users/userB`. Expected: `PERMISSION_DENIED`.
+5. **Denial-of-Wallet (Huge String)**: Admin or user injects 2MB string into `courseTitle` or `notes`. Expected: `PERMISSION_DENIED`.
+6. **ID Poisoning**: Requesting `/classes/../../etc` or 1KB junk characters. Expected: `PERMISSION_DENIED` (`isValidId` check).
+7. **Invalid Day of Week**: Sending `dayOfWeek: "Someday"`. Expected: `PERMISSION_DENIED`.
+8. **Malformed Time Format**: Sending `startTime: "9am"` or `"25:00"`. Expected: `PERMISSION_DENIED`.
+9. **Shadow Field Injection**: Adding unauthorized field `__adminOverride: true` during class or profile write. Expected: `PERMISSION_DENIED` (`keys().hasOnly(...)`).
+10. **Immutable Key & Timestamp Tampering**: Updating `/classes/c1` to mutate `userId`, `id`, or `createdAt`, or sending forged client `updatedAt`. Expected: `PERMISSION_DENIED`.
+11. **Profile Role Escalation**: User attempting to set `isAdmin: true` or `role: "admin"` in `/users/{userId}` or write to `/admins/{uid}`. Expected: `PERMISSION_DENIED`.
+12. **Blanket Query Scraping**: Attempting to list `/users` or read `/random_secrets`. Expected: `PERMISSION_DENIED`.

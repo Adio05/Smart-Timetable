@@ -2,7 +2,7 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User preferences and settings for the timetable app",
+      "description": "User notification and display preferences for the Engra timetable app",
       "type": "object",
       "properties": {
         "id": {
@@ -17,6 +17,14 @@
           "type": "number",
           "description": "Minutes before class to trigger notification"
         },
+        "soundEnabled": {
+          "type": "boolean",
+          "description": "Whether notification audio chime is enabled"
+        },
+        "showWeekends": {
+          "type": "boolean",
+          "description": "Whether Saturday and Sunday are displayed"
+        },
         "activeSemester": {
           "type": "string",
           "maxLength": 64,
@@ -24,18 +32,20 @@
         },
         "createdAt": {
           "type": "string",
-          "description": "ISO timestamp of creation"
+          "format": "date-time",
+          "description": "Server timestamp of creation"
         },
         "updatedAt": {
           "type": "string",
-          "description": "ISO timestamp of last update"
+          "format": "date-time",
+          "description": "Server timestamp of last update"
         }
       },
-      "required": ["id", "notificationsEnabled", "notificationLeadMinutes"]
+      "required": ["id", "notificationsEnabled", "notificationLeadMinutes", "createdAt", "updatedAt"]
     },
     "ClassItem": {
       "title": "ClassItem",
-      "description": "Individual lecture or class scheduled in the 9am-4pm timetable",
+      "description": "Individual lecture or class scheduled at any time of day in the shared Engra timetable",
       "type": "object",
       "properties": {
         "id": {
@@ -44,7 +54,12 @@
         },
         "userId": {
           "type": "string",
-          "description": "Owner user ID"
+          "description": "Admin creator user ID"
+        },
+        "visibility": {
+          "type": "string",
+          "enum": ["shared"],
+          "description": "Shared visibility scope for all signed-in users"
         },
         "courseCode": {
           "type": "string",
@@ -63,13 +78,13 @@
         },
         "startTime": {
           "type": "string",
-          "pattern": "^[0-2][0-9]:[0-5][0-9]$",
-          "description": "Class start time in HH:mm (between 09:00 and 16:00)"
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+          "description": "Class start time in 24h HH:mm (00:00 to 23:59)"
         },
         "endTime": {
           "type": "string",
-          "pattern": "^[0-2][0-9]:[0-5][0-9]$",
-          "description": "Class end time in HH:mm (between 09:00 and 16:00)"
+          "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]|24:00$",
+          "description": "Class end time in 24h HH:mm (00:00 to 24:00)"
         },
         "location": {
           "type": "string",
@@ -93,14 +108,16 @@
         },
         "createdAt": {
           "type": "string",
-          "description": "Creation timestamp"
+          "format": "date-time",
+          "description": "Server creation timestamp"
         },
         "updatedAt": {
           "type": "string",
-          "description": "Last update timestamp"
+          "format": "date-time",
+          "description": "Server update timestamp"
         }
       },
-      "required": ["id", "userId", "courseCode", "courseTitle", "dayOfWeek", "startTime", "endTime"]
+      "required": ["id", "userId", "visibility", "courseCode", "courseTitle", "dayOfWeek", "startTime", "endTime", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -108,13 +125,13 @@
       "schema": {
         "$ref": "#/entities/UserProfile"
       },
-      "description": "User profile and timetable settings"
+      "description": "User preferences and notification settings"
     },
-    "/users/{userId}/classes/{classId}": {
+    "/classes/{classId}": {
       "schema": {
         "$ref": "#/entities/ClassItem"
       },
-      "description": "Individual lecture class items belonging to the user"
+      "description": "Shared lecture class items readable by signed-in users and writable only by the verified admin"
     }
   }
 }
